@@ -57,7 +57,15 @@ export class OcrService {
 
     callbacks?.onProgress?.('ocr_detecting', 0, '正在检测文字区域...');
 
-    const results = await this.ocr.predict(canvas);
+    // @paddleocr/paddleocr-js 不支持 OffscreenCanvas，需要转换为 ImageBitmap
+    let imageInput: ImageBitmap | HTMLCanvasElement;
+    if (canvas instanceof OffscreenCanvas) {
+      imageInput = await createImageBitmap(canvas);
+    } else {
+      imageInput = canvas;
+    }
+
+    const results = await this.ocr.predict(imageInput);
 
     callbacks?.onProgress?.('ocr_recognizing', 0.5, '正在识别文字内容...');
 

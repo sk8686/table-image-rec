@@ -4,49 +4,75 @@ export interface TableStructureCallbacks {
   onProgress?: (stage: ProgressStage, progress: number, message: string) => void;
 }
 
-// SLANet HTML token 词汇表（30 个 token）
-const DICT_HTML: Record<number, string> = {
-  0: ' ',
-  1: '<html>',
-  2: '</html>',
-  3: '<head>',
-  4: '</head>',
-  5: '<body>',
-  6: '</body>',
-  7: '<table>',
-  8: '</table>',
-  9: '<thead>',
-  10: '</thead>',
-  11: '<tbody>',
-  12: '</tbody>',
-  13: '<tr>',
-  14: '</tr>',
-  15: '<td>',
-  16: '</td>',
-  17: '<td',
-  18: ' colspan="',
-  19: ' rowspan="',
-  20: '>',
-  21: '<th>',
-  22: '</th>',
-  23: '<th',
-  24: '1',
-  25: '2',
-  26: '3',
-  27: '4',
-  28: '5',
-  29: '6',
-};
+// SLANet-plus HTML token 词汇表（48 个字符 + sos + eos = 50 个 token）
+// 从 ONNX 模型 metadata 中提取
+const DICT_CHARACTER: string[] = [
+  '<thead>',
+  '</thead>',
+  '<tbody>',
+  '</tbody>',
+  '<tr>',
+  '</tr>',
+  '<td',
+  '>',
+  '</td>',
+  ' colspan="2"',
+  ' colspan="3"',
+  ' colspan="4"',
+  ' colspan="5"',
+  ' colspan="6"',
+  ' colspan="7"',
+  ' colspan="8"',
+  ' colspan="9"',
+  ' colspan="10"',
+  ' colspan="11"',
+  ' colspan="12"',
+  ' colspan="13"',
+  ' colspan="14"',
+  ' colspan="15"',
+  ' colspan="16"',
+  ' colspan="17"',
+  ' colspan="18"',
+  ' colspan="19"',
+  ' colspan="20"',
+  ' rowspan="2"',
+  ' rowspan="3"',
+  ' rowspan="4"',
+  ' rowspan="5"',
+  ' rowspan="6"',
+  ' rowspan="7"',
+  ' rowspan="8"',
+  ' rowspan="9"',
+  ' rowspan="10"',
+  ' rowspan="11"',
+  ' rowspan="12"',
+  ' rowspan="13"',
+  ' rowspan="14"',
+  ' rowspan="15"',
+  ' rowspan="16"',
+  ' rowspan="17"',
+  ' rowspan="18"',
+  ' rowspan="19"',
+  ' rowspan="20"',
+  '<td></td>',
+];
+
+// 添加特殊 token: sos (start) 和 eos (end)
+const BEG_STR = 'sos';
+const END_STR = 'eos';
+const FULL_VOCAB: string[] = [BEG_STR, ...DICT_CHARACTER, END_STR];
 
 const MODEL_INPUT_SIZE = 488;
 const IMAGENET_MEAN = [0.485, 0.456, 0.406];
 const IMAGENET_STD = [0.229, 0.224, 0.225];
-const MAX_TEXT_LENGTH = 500;
-const NUM_CLASSES = 30;
+const NUM_CLASSES = FULL_VOCAB.length; // 50
+const BBOX_VALUES = 8; // 4 个点 × 2 坐标 = 8 个值
+
+// Cell token 标识
+const TD_TOKENS = ['<td', '<td></td>'];
 
 /**
  * SLANet 预处理 - 返回 Float32Array 和尺寸信息
- * 不依赖 onnxruntime-web，便于测试
  */
 export function preprocessImageData(canvas: OffscreenCanvas | HTMLCanvasElement): {
   floatData: Float32Array;
@@ -56,12 +82,10 @@ export function preprocessImageData(canvas: OffscreenCanvas | HTMLCanvasElement)
   const srcWidth = canvas.width;
   const srcHeight = canvas.height;
 
-  // resize 最长边到 488
   const ratio = MODEL_INPUT_SIZE / Math.max(srcWidth, srcHeight);
   const resizeWidth = Math.round(srcWidth * ratio);
   const resizeHeight = Math.round(srcHeight * ratio);
 
-  // 创建 488x488 的画布并绘制缩放后的图像
   const paddedCanvas = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
   const paddedCtx = paddedCanvas.getContext('2d')!;
   paddedCtx.fillStyle = '#000000';
@@ -71,7 +95,6 @@ export function preprocessImageData(canvas: OffscreenCanvas | HTMLCanvasElement)
   const paddedData = paddedCtx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
   const paddedPixels = paddedData.data;
 
-  // 标准化 + HWC → CHW (BGR 格式)
   const floatData = new Float32Array(3 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE);
   const channelSize = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
 
@@ -99,10 +122,14 @@ export function postprocessSLANet(
   resizeWidth: number,
   resizeHeight: number,
 ): { html: string; cells: CellRegion[] } {
+  const seqLen = structProbsData.length / NUM_CLASSES;
+  const endIdx = FULL_VOCAB.indexOf(END_STR);
+
   const htmlTokens: string[] = [];
   const cellBboxes: number[][] = [];
+  const scores: number[] = [];
 
-  for (let t = 0; t < MAX_TEXT_LENGTH; t++) {
+  for (let t = 0; t < seqLen; t++) {
     let maxIdx = 0;
     let maxVal = -Infinity;
     for (let c = 0; c < NUM_CLASSES; c++) {
@@ -113,35 +140,95 @@ export function postprocessSLANet(
       }
     }
 
-    const tokenStr = DICT_HTML[maxIdx] ?? ' ';
+    // 跳过 sos token
+    if (t === 0 && maxIdx === 0) continue;
 
-    if (tokenStr === '</html>') {
-      htmlTokens.push(tokenStr);
-      break;
-    }
+    // 遇到 eos 停止
+    if (maxIdx === endIdx) break;
 
+    // 跳过 sos 和 eos
+    if (maxIdx === 0 || maxIdx === endIdx) continue;
+
+    const tokenStr = FULL_VOCAB[maxIdx] ?? '';
     htmlTokens.push(tokenStr);
+    scores.push(maxVal);
 
-    if (tokenStr === '<td>' || tokenStr === '<td' || tokenStr === '<th>' || tokenStr === '<th') {
-      const x1 = locPredsData[t * 4]!;
-      const y1 = locPredsData[t * 4 + 1]!;
-      const x2 = locPredsData[t * 4 + 2]!;
-      const y2 = locPredsData[t * 4 + 3]!;
-      cellBboxes.push([x1, y1, x2, y2]);
+    // 提取 cell token 的 bbox
+    if (TD_TOKENS.includes(tokenStr)) {
+      const bbox: number[] = [];
+      for (let b = 0; b < BBOX_VALUES; b++) {
+        bbox.push(locPredsData[t * BBOX_VALUES + b]!);
+      }
+      cellBboxes.push(bbox);
     }
   }
 
-  const html = htmlTokens.join('');
-  const cells = parseHTMLToCellGrid(
-    html,
-    cellBboxes,
-    srcWidth,
-    srcHeight,
-    resizeWidth,
-    resizeHeight,
-  );
+  // 包裹 HTML 结构
+  const html = wrapWithHtmlStruct(htmlTokens);
+
+  // 解码 bbox 并过滤全零的
+  const decodedBboxes = decodeBboxes(cellBboxes, srcWidth, srcHeight, resizeWidth, resizeHeight);
+
+  const cells = parseHTMLToCellGrid(html, decodedBboxes, srcWidth, srcHeight);
 
   return { html, cells };
+}
+
+/**
+ * 包裹 HTML 结构
+ */
+function wrapWithHtmlStruct(tokens: string[]): string {
+  return `<html><body><table>${tokens.join('')}</table></body></html>`;
+}
+
+/**
+ * 解码 bbox：8 个值 → 4 个角点坐标 → 转换为原始图像坐标
+ * 8 个值: [x1, y1, x2, y2, x3, y3, x4, y4]（4 个角点）
+ * 转换为 [x_min, y_min, x_max, y_max]
+ */
+function decodeBboxes(
+  rawBboxes: number[][],
+  srcWidth: number,
+  srcHeight: number,
+  resizeWidth: number,
+  resizeHeight: number,
+): number[][] {
+  const result: number[][] = [];
+
+  for (const raw of rawBboxes) {
+    // 过滤全零 bbox
+    if (raw.every((v) => v === 0)) continue;
+
+    // 8 个值 → 4 对坐标
+    // 先乘以 488 得到像素坐标
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      xs.push(raw[i * 2]! * MODEL_INPUT_SIZE);
+      ys.push(raw[i * 2 + 1]! * MODEL_INPUT_SIZE);
+    }
+
+    // SLANetPlus 需要额外缩放 padding ratio
+    const wRatio = MODEL_INPUT_SIZE / resizeWidth;
+    const hRatio = MODEL_INPUT_SIZE / resizeHeight;
+
+    const scaledXs = xs.map((x) => x / wRatio);
+    const scaledYs = ys.map((y) => y / hRatio);
+
+    // 转换为 [x_min, y_min, x_max, y_max]
+    const xMin = Math.min(...scaledXs);
+    const yMin = Math.min(...scaledYs);
+    const xMax = Math.max(...scaledXs);
+    const yMax = Math.max(...scaledYs);
+
+    // 缩放回原始图像坐标
+    const scaleX = srcWidth / resizeWidth;
+    const scaleY = srcHeight / resizeHeight;
+
+    result.push([xMin * scaleX, yMin * scaleY, xMax * scaleX, yMax * scaleY]);
+  }
+
+  return result;
 }
 
 /**
@@ -152,8 +239,6 @@ export function parseHTMLToCellGrid(
   bboxes: number[][],
   srcWidth: number,
   srcHeight: number,
-  resizeWidth: number,
-  resizeHeight: number,
 ): CellRegion[] {
   const cells: CellRegion[] = [];
   let currentRow = -1;
@@ -168,16 +253,12 @@ export function parseHTMLToCellGrid(
     const tag = match[0]!;
 
     if (tag === '<tr>') {
-      // 递减上一行遗留的 rowspan 计数
-      // 注意：值为 0 表示当前行仍被占据（是 rowspan 的最后一行）
       for (const col of Object.keys(rowSpanMap)) {
         rowSpanMap[Number(col)] -= 1;
-        // 不删除值为 0 的项，因为当前行仍被占据
       }
       currentRow += 1;
       currentCol = -1;
     } else if (tag === '</tr>') {
-      // 行结束后清理值为 0 的项（当前行已处理完毕）
       for (const col of Object.keys(rowSpanMap)) {
         if (rowSpanMap[Number(col)] < 0) {
           delete rowSpanMap[Number(col)];
@@ -185,7 +266,6 @@ export function parseHTMLToCellGrid(
       }
     } else if (tag.startsWith('<td') || tag.startsWith('<th')) {
       currentCol += 1;
-      // 跳过被 rowspan 占据的列（值 >= 0 表示被占据）
       while (rowSpanMap[currentCol] !== undefined && rowSpanMap[currentCol]! >= 0) {
         currentCol += 1;
       }
@@ -206,7 +286,12 @@ export function parseHTMLToCellGrid(
       const rawBbox = bboxIdx < bboxes.length ? bboxes[bboxIdx]! : [0, 0, 0, 0];
       bboxIdx += 1;
 
-      const bbox = rescaleBBox(rawBbox, srcWidth, srcHeight, resizeWidth, resizeHeight);
+      const bbox: BBox = {
+        x: Math.round(rawBbox[0]!),
+        y: Math.round(rawBbox[1]!),
+        width: Math.round(rawBbox[2]! - rawBbox[0]!),
+        height: Math.round(rawBbox[3]! - rawBbox[1]!),
+      };
 
       cells.push({
         rowIndex: currentRow,
@@ -231,45 +316,17 @@ export function parseHTMLToCellGrid(
   return cells;
 }
 
-/**
- * 将 bbox 从 488x488 归一化坐标转换回原始图像坐标
- */
-export function rescaleBBox(
-  rawBbox: number[],
-  srcWidth: number,
-  srcHeight: number,
-  resizeWidth: number,
-  resizeHeight: number,
-): BBox {
-  let [x1, y1, x2, y2] = rawBbox;
-
-  x1 = x1 * MODEL_INPUT_SIZE;
-  y1 = y1 * MODEL_INPUT_SIZE;
-  x2 = x2 * MODEL_INPUT_SIZE;
-  y2 = y2 * MODEL_INPUT_SIZE;
-
-  x1 = Math.max(0, Math.min(x1, resizeWidth));
-  y1 = Math.max(0, Math.min(y1, resizeHeight));
-  x2 = Math.max(0, Math.min(x2, resizeWidth));
-  y2 = Math.max(0, Math.min(y2, resizeHeight));
-
-  const scaleX = srcWidth / resizeWidth;
-  const scaleY = srcHeight / resizeHeight;
-
-  x1 = x1 * scaleX;
-  y1 = y1 * scaleY;
-  x2 = x2 * scaleX;
-  y2 = y2 * scaleY;
-
-  return {
-    x: Math.round(x1),
-    y: Math.round(y1),
-    width: Math.round(x2 - x1),
-    height: Math.round(y2 - y1),
-  };
-}
-
-export { DICT_HTML, MODEL_INPUT_SIZE, IMAGENET_MEAN, IMAGENET_STD, NUM_CLASSES, MAX_TEXT_LENGTH };
+export {
+  DICT_CHARACTER,
+  FULL_VOCAB,
+  MODEL_INPUT_SIZE,
+  IMAGENET_MEAN,
+  IMAGENET_STD,
+  NUM_CLASSES,
+  BBOX_VALUES,
+  BEG_STR,
+  END_STR,
+};
 
 /**
  * SLANet 表格结构识别服务
@@ -303,9 +360,7 @@ export class TableStructureService {
     callbacks?.onProgress?.('model_download', 0, '正在下载表格结构识别模型...');
 
     const ort = await import('onnxruntime-web');
-    // 使用 CDN 加载 WASM 文件，避免本地路径问题
-    ort.env.wasm.wasmPaths =
-      'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 
     callbacks?.onProgress?.('model_loading', 0.3, '正在初始化推理引擎...');
 
@@ -339,10 +394,8 @@ export class TableStructureService {
     const srcWidth = canvas.width;
     const srcHeight = canvas.height;
 
-    // 预处理
     const { floatData, resizeWidth, resizeHeight } = preprocessImageData(canvas);
 
-    // 创建 Tensor 并推理
     const ort = await import('onnxruntime-web');
     const inputTensor = new ort.Tensor('float32', floatData, [
       1,
@@ -355,14 +408,13 @@ export class TableStructureService {
 
     const outputs = await this.session.run(feeds);
 
-    const structProbs = outputs[this.session.outputNames[0] as string];
-    const locPreds = outputs[this.session.outputNames[1] as string];
+    const structProbs = outputs[this.session.outputNames[1] as string];
+    const locPreds = outputs[this.session.outputNames[0] as string];
 
     if (!structProbs || !locPreds) {
       throw new Error('模型输出格式异常');
     }
 
-    // 后处理
     const { html, cells } = postprocessSLANet(
       structProbs.data as Float32Array,
       locPreds.data as Float32Array,
