@@ -303,7 +303,9 @@ export class TableStructureService {
     callbacks?.onProgress?.('model_download', 0, '正在下载表格结构识别模型...');
 
     const ort = await import('onnxruntime-web');
-    ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
+    // 使用 CDN 加载 WASM 文件，避免本地路径问题
+    ort.env.wasm.wasmPaths =
+      'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 
     callbacks?.onProgress?.('model_loading', 0.3, '正在初始化推理引擎...');
 

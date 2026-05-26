@@ -10,4 +10,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          onnxruntime: ['onnxruntime-web'],
+        },
+      },
+    },
+  },
 });
