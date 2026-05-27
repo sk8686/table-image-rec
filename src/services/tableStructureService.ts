@@ -367,18 +367,27 @@ export class TableStructureService {
     callbacks?.onProgress?.('model_download', 0, '正在下载表格结构识别模型...');
 
     const ort = await import('onnxruntime-web');
-    // 尝试多种配置来解决 WASM 输出截断问题
     ort.env.wasm.numThreads = 1;
-    ort.env.wasm.simd = true;
-    ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
-
+    
     callbacks?.onProgress?.('model_loading', 0.3, '正在初始化推理引擎...');
-
+    
+    // 检查 WebGPU 是否可用，尝试使用 WebGPU 后端解决 WASM 截断问题
+    const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    
     try {
-      this.session = await ort.InferenceSession.create(this.modelUrl, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      });
+      if (hasWebGPU) {
+        console.log('[SLANet] Using WebGPU backend');
+        this.session = await ort.InferenceSession.create(this.modelUrl, {
+          executionProviders: ['webgpu', 'wasm'],
+          graphOptimizationLevel: 'all',
+        });
+      } else {
+        console.log('[SLANet] Using WASM backend (WebGPU not available)');
+        this.session = await ort.InferenceSession.create(this.modelUrl, {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all',
+        });
+      }
     } catch (err) {
       throw new Error(
         `表格结构识别模型加载失败: ${err instanceof Error ? err.message : '未知错误'}`,
