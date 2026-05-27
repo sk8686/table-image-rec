@@ -261,6 +261,7 @@ export function preprocess(
 
   return {
     canvas,
+    sourceCanvas: sourceCanvas,
     appliedParams: params,
     originalSize,
     processedSize: { width: canvas.width, height: canvas.height },

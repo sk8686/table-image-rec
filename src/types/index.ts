@@ -27,6 +27,7 @@ export interface CropRect {
 
 export interface PreprocessorOutput {
   canvas: OffscreenCanvas;
+  sourceCanvas: OffscreenCanvas;
   appliedParams: PreprocessParams;
   originalSize: { width: number; height: number };
   processedSize: { width: number; height: number };

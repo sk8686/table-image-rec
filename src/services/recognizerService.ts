@@ -14,9 +14,10 @@ export class RecognizerService {
     onProgress?: RecognizerProgressCallback,
   ): Promise<RecognizerOutput> {
     const canvas = preprocessedOutput.canvas;
+    const sourceCanvas = preprocessedOutput.sourceCanvas;
     const sourceImageSize = preprocessedOutput.originalSize;
 
-    // 1. OCR 文字识别
+    // 1. OCR 文字识别（使用预处理后的 canvas，提高 OCR 精度）
     onProgress?.({
       stage: 'ocr_detecting',
       progress: 0,
@@ -36,7 +37,7 @@ export class RecognizerService {
       message: '文字识别完成',
     });
 
-    // 2. SLANet 表格结构识别
+    // 2. SLANet 表格结构识别（使用原始尺寸的 sourceCanvas）
     onProgress?.({
       stage: 'table_structure',
       progress: 0.5,
@@ -44,7 +45,7 @@ export class RecognizerService {
     });
 
     const structureService = getTableStructureService();
-    const structureResult = await structureService.recognize(canvas, {
+    const structureResult = await structureService.recognize(sourceCanvas, {
       onProgress: (stage: ProgressStage, progress: number, message: string) => {
         onProgress?.({ stage, progress: 0.5 + progress * 0.4, message });
       },
