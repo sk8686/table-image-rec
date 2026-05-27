@@ -15,9 +15,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@paddleocr/paddleocr-js": "^0.3.2",
     "handsontable": "^6.2.2",
-    "onnxruntime-web": "^1.26.0",
+    "onnxruntime-web": "^1.26.0-dev.20260416-b7804b056c",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "xlsx": "^0.18.5"
