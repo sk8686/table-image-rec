@@ -5,8 +5,8 @@ import * as XLSX from 'xlsx';
  * 导出为 Excel (xlsx) 格式
  */
 export function exportToExcel(input: ExporterInput): ExporterOutput {
+  const { tableData, filename } = input;
   try {
-    const { tableData, filename } = input;
     const wb = XLSX.utils.book_new();
 
     // 创建工作表数据
@@ -69,8 +69,8 @@ export function exportToExcel(input: ExporterInput): ExporterOutput {
  * 导出为 CSV 格式
  */
 export function exportToCsv(input: ExporterInput): ExporterOutput {
+  const { tableData, filename } = input;
   try {
-    const { tableData, filename } = input;
     const lines: string[] = [];
 
     for (let r = 0; r < tableData.rowCount; r++) {

@@ -10,14 +10,21 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  css: {
+    lightningcss: {
+      errorRecovery: true,
+    },
+  },
   optimizeDeps: {
     exclude: ['onnxruntime-web'],
   },
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          onnxruntime: ['onnxruntime-web'],
+        manualChunks(id) {
+          if (id.includes('onnxruntime-web')) {
+            return 'onnxruntime';
+          }
         },
       },
     },

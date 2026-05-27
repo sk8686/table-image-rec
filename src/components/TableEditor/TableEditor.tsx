@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import Handsontable from 'handsontable';
 import type { TableData } from '@/types';
 import { tableDataToHandsontable, handsontableToTableData } from '@/services/tableDataConverter';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import 'handsontable/dist/handsontable.full.min.css';
 
 interface TableEditorProps {
@@ -24,6 +25,7 @@ export default function TableEditor({ tableData, onDataChange }: TableEditorProp
       hotRef.current = null;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hot = new Handsontable(containerRef.current, {
       data,
       mergeCells: mergeCells.length > 0 ? mergeCells : true,
@@ -35,7 +37,7 @@ export default function TableEditor({ tableData, onDataChange }: TableEditorProp
       stretchH: 'all',
       className: 'htCenter',
       licenseKey: 'non-commercial-and-evaluation',
-      afterChange: (changes) => {
+      afterChange: (changes: unknown[][]) => {
         if (!changes || !onDataChange) return;
 
         const hotInstance = hotRef.current;
@@ -60,7 +62,7 @@ export default function TableEditor({ tableData, onDataChange }: TableEditorProp
         );
         onDataChange(newTableData);
       },
-    });
+    } as any);
 
     hotRef.current = hot;
   }, [data, mergeCells, onDataChange, tableData.metadata]);
@@ -98,15 +100,16 @@ export default function TableEditor({ tableData, onDataChange }: TableEditorProp
         cellMeta[`${row},${col}`] = { className: 'uncertain-cell' };
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       hot.updateSettings({
-        cells: (row, col) => {
+        cells: (row: number, col: number) => {
           const meta = cellMeta[`${row},${col}`];
           if (meta) {
             return { className: meta.className };
           }
           return {};
         },
-      });
+      } as any, false);
     }
   }, [tableData]);
 

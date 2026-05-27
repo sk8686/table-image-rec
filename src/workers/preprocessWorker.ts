@@ -39,7 +39,8 @@ self.onmessage = async (e: MessageEvent<PreprocessRequest>) => {
       processedSize: result.processedSize,
     };
 
-    self.postMessage(response, [result.canvas]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (self as any).postMessage(response, [result.canvas]);
   } catch (err) {
     const response: PreprocessErrorResponse = {
       type: 'error',

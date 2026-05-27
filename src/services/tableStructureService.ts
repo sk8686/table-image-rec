@@ -98,14 +98,21 @@ export function preprocessImageData(canvas: OffscreenCanvas | HTMLCanvasElement)
   const floatData = new Float32Array(3 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE);
   const channelSize = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
 
+  const IMAGENET_MEAN_R = IMAGENET_MEAN[0]!;
+  const IMAGENET_MEAN_G = IMAGENET_MEAN[1]!;
+  const IMAGENET_MEAN_B = IMAGENET_MEAN[2]!;
+  const IMAGENET_STD_R = IMAGENET_STD[0]!;
+  const IMAGENET_STD_G = IMAGENET_STD[1]!;
+  const IMAGENET_STD_B = IMAGENET_STD[2]!;
+
   for (let i = 0; i < channelSize; i++) {
     const r = paddedPixels[i * 4]! / 255;
     const g = paddedPixels[i * 4 + 1]! / 255;
     const b = paddedPixels[i * 4 + 2]! / 255;
 
-    floatData[i] = (b - IMAGENET_MEAN[2]) / IMAGENET_STD[2];
-    floatData[channelSize + i] = (g - IMAGENET_MEAN[1]) / IMAGENET_STD[1];
-    floatData[2 * channelSize + i] = (r - IMAGENET_MEAN[0]) / IMAGENET_STD[0];
+    floatData[i] = (b - IMAGENET_MEAN_B) / IMAGENET_STD_B;
+    floatData[channelSize + i] = (g - IMAGENET_MEAN_G) / IMAGENET_STD_G;
+    floatData[2 * channelSize + i] = (r - IMAGENET_MEAN_R) / IMAGENET_STD_R;
   }
 
   return { floatData, resizeWidth, resizeHeight };
@@ -237,8 +244,8 @@ function decodeBboxes(
 export function parseHTMLToCellGrid(
   html: string,
   bboxes: number[][],
-  srcWidth: number,
-  srcHeight: number,
+  _srcWidth: number,
+  _srcHeight: number,
 ): CellRegion[] {
   const cells: CellRegion[] = [];
   let currentRow = -1;
@@ -254,13 +261,15 @@ export function parseHTMLToCellGrid(
 
     if (tag === '<tr>') {
       for (const col of Object.keys(rowSpanMap)) {
-        rowSpanMap[Number(col)] -= 1;
+        const val = rowSpanMap[Number(col)];
+        if (val !== undefined) rowSpanMap[Number(col)] = val - 1;
       }
       currentRow += 1;
       currentCol = -1;
     } else if (tag === '</tr>') {
       for (const col of Object.keys(rowSpanMap)) {
-        if (rowSpanMap[Number(col)] < 0) {
+        const val = rowSpanMap[Number(col)];
+        if (val !== undefined && val < 0) {
           delete rowSpanMap[Number(col)];
         }
       }
@@ -371,7 +380,6 @@ export class TableStructureService {
     } catch (err) {
       throw new Error(
         `表格结构识别模型加载失败: ${err instanceof Error ? err.message : '未知错误'}`,
-        { cause: err },
       );
     }
 

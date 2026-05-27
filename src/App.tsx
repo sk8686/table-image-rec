@@ -1,11 +1,11 @@
 import { useCallback, useEffect } from 'react';
 import { AppProvider, useAppState } from './store/appContext';
 import ImageUploader from './components/ImageUploader/ImageUploader';
-import PreprocessPanel from './components/ImagePreprocessor/PreprocessPanel';
+
 import TableEditor from './components/TableEditor/TableEditor';
 import TableExporter from './components/TableExporter/TableExporter';
 import ProgressTracker from './components/ProgressTracker/ProgressTracker';
-import type { ImageUploaderOutput, PreprocessorOutput, ProgressEvent, TableData } from './types';
+import type { ImageUploaderOutput, ProgressEvent, TableData } from './types';
 import { getRecognizerService } from './services/recognizerService';
 import { preprocessOnMainThread } from './services/preprocessService';
 import { DEFAULT_PARAMS } from './services/preprocessCore';
@@ -16,13 +16,6 @@ function AppContent() {
   const handleImageReady = useCallback(
     (output: ImageUploaderOutput) => {
       dispatch({ type: 'SET_IMAGE', payload: output });
-    },
-    [dispatch],
-  );
-
-  const handlePreprocessComplete = useCallback(
-    (output: PreprocessorOutput) => {
-      dispatch({ type: 'SET_PREPROCESS_OUTPUT', payload: output });
     },
     [dispatch],
   );
